@@ -2,6 +2,7 @@ MPU-9250
 ========
 
 Arduino sketch for MPU-9250 9 DoF sensor with AHRS sensor fusion
+[original code on github](https://github.com/kriswiner/MPU-9250.git)
 
 Demonstrate MPU-9250 basic functionality including parameterizing the register addresses, initializing the sensor, 
 getting properly scaled accelerometer, gyroscope, and magnetometer data out, calibration and self-test of sensors.
@@ -16,7 +17,7 @@ One reason for this difference is the single-precision floating point engine emb
 
 I added a version of the basic sketch that uses the i2c_t3.h 'Wire' library specifically designed for Teensy 3.1. It allows easy access to Teensy-specific  capabilities such as specification of which set of hardware i2c pins will be used, the bus speed (up to 1 MHz!) and also allows master and/or slave designation to handle multiplexing between i2c devices. See www.pjrc.com/teensy and  http://forum.pjrc.com/threads/21680-New-I2C-library-for-Teensy3 for details.
 
-I added another version of the sketch intended specifically for the [MPU9250_MS5637 Mini Add-On shield](https://www.tindie.com/products/onehorse/mpu9250-teensy-31-add-on-shields/) for the Teensy 3.1. 
+I added another version of the sketch intended specifically for the [MPU9250_MS5637 Mini Add-On shield](https://www.tindie.com/products/onehorse/mpu9250-teensy-3x-add-on-shields/) for the Teensy 3.x. 
 
 ![](https://d3s5r33r268y59.cloudfront.net/44691/products/thumbs/2014-07-22T02:09:32.088Z-MPU9250micro1.png.114x76_q85_pad_rcrop.png) ![](https://d3s5r33r268y59.cloudfront.net/44691/products/thumbs/2014-07-22T02:00:54.264Z-mpu9250mini1.png.114x76_q85_pad_rcrop.png) ![](https://d3s5r33r268y59.cloudfront.net/44691/products/thumbs/2014-07-22T02:09:32.088Z-mpu9250mini2.png.114x76_q85_pad_rcrop.png)
 

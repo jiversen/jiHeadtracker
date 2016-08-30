@@ -1,0 +1,46 @@
+%calibration 12/13/15
+
+
+U =
+
+    0.0041884  -7.2504e-05   0.00017412
+            0    0.0045851  -2.8885e-05
+            0            0    0.0037432
+
+norm(U)
+
+ans =
+
+    0.0045892
+
+
+Un =
+
+      0.91265    -0.015799     0.037942
+            0       0.9991   -0.0062942
+            0            0      0.81566
+
+
+c =
+
+       -17.39
+        258.8
+      -307.48
+
+Original method: mean and scale of min to max
+% trimmed
+% ctr =
+%           -16        256.5       -296.5
+% scale =
+%        119.38        113.3       127.27
+% 
+% untrimmed (original method)
+% ctr =
+%          40.5        257.5         -299
+% scale =
+%        182.77       121.69       132.35
+
+For comparison, relative scale of sphering method is
+            1
+       1.0947
+      0.89372

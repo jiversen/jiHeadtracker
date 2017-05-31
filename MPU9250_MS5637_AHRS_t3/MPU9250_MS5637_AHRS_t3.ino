@@ -320,10 +320,13 @@ bool warmedUp = false;                    // set to true after initial warm-up p
 float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor data values 
 float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
 float eInt[3] = {0.0f, 0.0f, 0.0f};       // vector to hold integral error for Mahony method
-float yc = 0.0, pc = 0.0, rc = 0.0;     //centering values for yaw, pitch and roll--when button is pressed, current ypr is set to '0' on joystick
-float dy = 0.0, dp = 0.0, dr = 0.0;                       //running average of change in coordinates--when still, reset to center
-uint32_t lastMove = 0;
-bool headStill = false;                 //true if movements are below a threshold
+float yc = 0.0, pc = 0.0, rc = 0.0;       //centering values for yaw, pitch and roll--when button is pressed, current ypr is set to '0' on joystick
+float dy = 0.0, dp = 0.0, dr = 0.0;       //running average of change in coordinates--when still, reset to center
+uint32_t lastMove = 0;                    //time of last head movement
+bool headStill = false;                   //true if movements are below a threshold
+bool nearCenter = false;                  //true if yaw is near center
+float centerThreshold = 10;               //yaw within this tolerance of center will be recentered
+float stillThreshold = 0.05;              //average movement < this amount counts as 'still' for recentering purposes
 
 //original Magwick state
 #if USE_ORIG_MADGWICK
@@ -701,8 +704,10 @@ void loop()
     dy = dy * lpf + abs(yaw - fyaw) * (1-lpf);
     dp = dp * lpf + abs(pitch - fpitch) * (1-lpf);
     dr = dr * lpf + abs(roll - froll) * (1-lpf);
-    headStill = ( (dy + dp + dr)/3 < 0.05); 
-
+    //amend to only recenter when already near the center--this may be a problem if we get way off!
+    headStill = ( (dy + dp + dr)/3 < stillThreshold);
+    nearCenter = (abs(yaw - yc) < centerThreshold);
+    
 //smoothed average of orientation
 if (0) {
     fyaw = fyaw * lpf + yaw * (1-lpf);
@@ -714,18 +719,26 @@ if (0) {
   froll = roll;
 }
 
-// if recent change is small for > 5 second, recenter gradually
+// if recent change is small for > 7 second, and we are near (+/- 10 deg) center, recenter gradually
+// if we are still for > 20 second, recenter immediately (sort of an emergency solution)
 if (warmedUp) {
   if (!headStill) {
     lastMove = Now;
   } else {
-    if (Now > lastMove + 5000000uL) {
+    if ((Now > lastMove + 7000000uL) & nearCenter) {
       if(SerialDebug) {
         Serial.println("Recenter");
       }
       yc = yc*lpf + fyaw*(1-lpf);
       pc = pc*lpf + fpitch*(1-lpf);
       rc = rc*lpf + froll*(1-lpf);
+    } else if (Now > lastMove + 20000000uL) {
+      if(SerialDebug) {
+        Serial.println("Emergency Recenter");
+      }
+      yc = fyaw;
+      pc = fpitch;
+      rc = froll;
     }
   }
 }

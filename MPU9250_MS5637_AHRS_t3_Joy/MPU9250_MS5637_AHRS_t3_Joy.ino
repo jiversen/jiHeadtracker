@@ -7,11 +7,13 @@
  modified by JRI 2015
  1) Selection of fusion methods: madgwick, mahoney
  2) Changes to debugging output
- 3) Changes to calibration: default uses hardcoded values calculated by my matlab scripts (see calibration folder), which
-      is  more effective than the simple min/max calibration scheme used before (doFullMagcal = true). if doFullMagcal=false,
-      will use original behavior of on-the-fly calibration with 40s data collection period of waving the magnetometer around. This
-      outputs continuous magenetometer data that can be read by plotMagCal.m to plot in realtime and calculate correction factors.
+ 3) Changes to calibration: Now, by default uses hardcoded best-fit elliptical correction values calculated by my matlab scripts
+      (see /calibration directory). This approach is more effective than the simple min/max calibration scheme used before. (doFullMagcal = true).
+      if doFullMagcal=false, will use original behavior of on-the-fly calibration with 40s data collection period of waving the magnetometer around.
+      AND also outputs continuous magenetometer data that can be read by plotMagCal.m to plot in realtime and calculate accurate correction factors.
       For using fixed location with fixed mounting on headphones, it makes much more sense to use more accurate precomputed calibrations.
+      So, to re-calibrate, start matlab plotMagCal.m, then set doFullMagcal=false and run this sketch, waving the device around to fill the sphere on screen.
+      Then, take the calibration values and put into this sketch, setting doFullMagcal=true to use them from now on.
  
  Demonstrate basic MPU-9250 functionality including parameterizing the register addresses, initializing the sensor, 
  getting properly scaled accelerometer, gyroscope, and magnetometer data out. Added display functions to 
@@ -42,6 +44,7 @@
  */
 
 #define SerialDebug false  // set to true to get Serial output for debugging
+
 //well, conditional compile saves only 11%=6k (3% progmem)
 #define USE_PRESSURE 0
 #define USE_MADGWICK 1
@@ -339,36 +342,61 @@ float b_x = 1, b_z = 0;                         // reference direction of flux i
 float w_bx = 0, w_by = 0, w_bz = 0;             // estimate gyroscope biases error
 #endif
 
-//JRI: Magnetometer calibrations (done using matlab plotMagCal.m (mine) and MgnCalibration.m (Alain Barraud, Susanne Leseq, 2008)
+// ==============================================================================================
+//JRI: Magnetometer calibrations (done using matlab calibration/plotMagCal.m, using MgnCalibration.m (Alain Barraud, Susanne Leseq, 2008)
 // values form magcal_12_13_15.txt
 // this both makes spherical and makes norm 1 [1./norm(U) = 217.9]
 // Used 4000 samples (40 seconds) with visual feedback so had most of sphere covered. See pdfs in calibration folder
 
 //this value switches between precomputed, accurate calibration and original on-the-fly, simpler method.
-bool doFullMagcal=true;   //true=use precomputed calibration
+bool doFullMagcal=true;   //true=use precomputed calibration; false=output calibration data over serial for 40s (and use simple min/max calibration)
 
+/*
+const char* magCalibrationDate = "12/13/15";
 double calibration_matrix[3][3] = 
-  {
-    {0.0041884,   -7.2504e-05,   0.00017412},
-    {0,            0.0045851,    -2.885e-05},
-    {0,            0,            0.0037432}  
-  };
+{
+  {0.0041884,   -7.2504e-05,   0.00017412},
+  {0,            0.0045851,    -2.885e-05},
+  {0,            0,            0.0037432}  
+};
 
-  double bias[3] = 
-  {
-    -17.39,
-    258.8,
-    -307.48
-  };  
+double bias[3] = 
+{
+  -17.39,
+  258.8,
+  -307.48
+};  
+*/
 
+const char* magCalibrationDate = "11/17/19";
+double calibration_matrix[3][3] = 
+{
+    {0.0039607, -5.5724e-05,  0.00013322},
+    {        0,   0.0039302, -0.00024999},
+    {        0,           0,   0.0039319}
+};
+
+double bias[3] = 
+{
+    80.90421,
+    130.5132,
+   -300.4235
+};
+
+// ==============================================================================================
+
+// Helper function to transform from raw to calibriated magnetometer data
 float cal_mag[3];
 void transform_mag(int16_t *raw_mag) {
-double uncal_mag[3];
+  double uncal_mag[3];
   
+  //recenter
   for (int i=0; i<3; ++i) {
     uncal_mag[i] = (double)raw_mag[i] - bias[i];
     cal_mag[i] = 0.0;
   }
+
+  //sphericalize
   for (int i=0; i<3; ++i)
     for (int j=0; j<3; ++j)
       cal_mag[i] += calibration_matrix[i][j] * uncal_mag[j];
@@ -396,11 +424,14 @@ void setup()
   // Read the WHO_AM_I register, this is a good test of communication
   Serial.println("JRI: JOY Version");
   Serial.println("MPU9250 9-axis motion sensor...");
+  
   byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
   Serial.print("MPU9250 "); Serial.print("I AM "); Serial.print(c, HEX); Serial.print(" I should be "); Serial.println(0x71, HEX);
   
-  if (c == 0x71) // WHO_AM_I should always be 0x71
-  {  
+  if (c != 0x71) { // WHO_AM_I should always be 0x71
+    Serial.print("Could not connect to MPU9250! Halting.");
+    while(1) ; // Loop forever if communication doesn't happen
+  } else {
     Serial.println("MPU9250 is online...");
     
     MPU9250SelfTest(SelfTest); // Start by performing self test and reporting values
@@ -416,12 +447,13 @@ void setup()
    getGres();
    getMres();
     
-   Serial.println(" Calibrate gyro and accel...in 4 seconds. Don't move!");
+   Serial.println(" Centering gyro and accel...in 4 seconds. Don't move!");
    delay(4000);
-   Serial.println(" Calibrating...");
+   Serial.println(" Centering...");
    accelgyrocalMPU9250(gyroBias, accelBias); // Calibrate gyro and accelerometers, load biases in bias registers
-   Serial.println("accel biases (mg)"); Serial.println(1000.*accelBias[0]); Serial.println(1000.*accelBias[1]); Serial.println(1000.*accelBias[2]);
-   Serial.println("gyro biases (dps)"); Serial.println(gyroBias[0]); Serial.println(gyroBias[1]); Serial.println(gyroBias[2]);
+   Serial.println("Wrote bias to MPU9250:");
+   Serial.println("  accel biases (mg):"); Serial.println(1000.*accelBias[0]); Serial.println(1000.*accelBias[1]); Serial.println(1000.*accelBias[2]);
+   Serial.println("  gyro biases (dps):"); Serial.println(gyroBias[0]); Serial.println(gyroBias[1]); Serial.println(gyroBias[2]);
    
   initMPU9250(); 
   Serial.println("MPU9250 initialized for active data mode....\n"); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
@@ -432,9 +464,10 @@ void setup()
   Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(d, HEX); Serial.print(" I should be "); Serial.println(0x48, HEX);
   
   // Get magnetometer calibration from AK8963 ROM
-  initAK8963(magCalibration); Serial.println("AK8963 initialized for active data mode...."); // Initialize device for active mode read of magnetometer
+  initAK8963(magCalibration);
+  Serial.println("AK8963 initialized for active data mode...."); // Initialize device for active mode read of magnetometer
 
-  //original calibration routine--also used to spew calibration values to matlab to calculate the calibration factors
+  //original min/max magnetometer calibration routine--also used to spew calibration values to matlab to calculate the calibration factors
   if (!doFullMagcal) {
     if(1 || SerialDebug) {
       Serial.println("Calibration values: ");
@@ -443,11 +476,11 @@ void setup()
       Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration[2], 2);
     }
     magcalMPU9250(magBias, magScale);
-    Serial.println("AK8963 mag biases (mG)"); Serial.println(magBias[0]); Serial.println(magBias[1]); Serial.println(magBias[2]); 
-    Serial.println("AK8963 mag scale (mG)"); Serial.println(magScale[0]); Serial.println(magScale[1]); Serial.println(magScale[2]); 
+    Serial.println("AK8963 mag biases (mG): "); Serial.println(magBias[0]); Serial.println(magBias[1]); Serial.println(magBias[2]); 
+    Serial.println("AK8963 mag scale  (mG): "); Serial.println(magScale[0]); Serial.println(magScale[1]); Serial.println(magScale[2]); 
     delay(2000); // add delay to see results before serial spew of data
   } else {
-    Serial.println("Using pre-computed magnetometer calibration (12/13/15).");
+    Serial.print("Using pre-computed magnetometer calibration ("); Serial.print(magCalibrationDate); Serial.println(").");
   }
 
   #if USE_PRESSURE
@@ -474,12 +507,6 @@ void setup()
   #endif
 
   firstUpdate = micros();
-  }
-  else
-  {
-    Serial.print("Could not connect to MPU9250: 0x");
-    Serial.println(c, HEX);
-    while(1) ; // Loop forever if communication doesn't happen
   }
 }
 
@@ -510,7 +537,8 @@ void loop()
       Serial.print(" my = "); Serial.print( magCount[1] ); 
       Serial.print(" mz = "); Serial.print( magCount[2] ); Serial.println(" raw");
     }
-    
+
+    // use min/max (orig), or full calibration (default)
     if (!doFullMagcal) {
       // Calculate the magnetometer values in milliGauss
       // Include factory calibration per data sheet and user environmental corrections
@@ -719,22 +747,23 @@ if (0) {
   froll = roll;
 }
 
-// if recent change is small for > 7 second, and we are near (+/- 10 deg) center, recenter gradually
+// if recent change is small for > 5 second, and we are near (+/- 10 deg) center, recenter gradually, for 2 seconds
 // if we are still for > 20 second, recenter immediately (sort of an emergency solution)
 if (warmedUp) {
   if (!headStill) {
     lastMove = Now;
   } else {
-    if ((Now > lastMove + 7000000uL) & nearCenter) {
-      if(SerialDebug) {
-        Serial.println("Recenter");
+    if ((Now > lastMove + 5000000uL) & (Now < lastMove + 7000000uL) & nearCenter) {
+      if(1 || SerialDebug) {
+        Serial.print("Gradual Recenter ");
+        Serial.println( (Now-lastMove) / 100000);
       }
       yc = yc*lpf + fyaw*(1-lpf);
       pc = pc*lpf + fpitch*(1-lpf);
       rc = rc*lpf + froll*(1-lpf);
     } else if (Now > lastMove + 20000000uL) {
       if(SerialDebug) {
-        Serial.println("Emergency Recenter");
+        Serial.println(1 || "Emergency Immediate Recenter");
       }
       yc = fyaw;
       pc = fpitch;
@@ -1014,7 +1043,7 @@ void accelgyrocalMPU9250(float * dest1, float * dest2)
   uint16_t  gyrosensitivity  = 131;   // = 131 LSB/degrees/sec
   uint16_t  accelsensitivity = 16384;  // = 16384 LSB/g
 
-// JRI loop this 10x
+// JRI loop this 10x to improve accuracy
 for (jj = 0; jj < 10; jj++) {
   // Configure FIFO to capture accelerometer and gyro data for bias calculation
     writeByte(MPU9250_ADDRESS, USER_CTRL, 0x40);   // Enable FIFO  
@@ -1043,17 +1072,15 @@ for (jj = 0; jj < 10; jj++) {
       accel_bias[2] += (int32_t) accel_temp[2];
       gyro_bias[0]  += (int32_t) gyro_temp[0];
       gyro_bias[1]  += (int32_t) gyro_temp[1];
-      gyro_bias[2]  += (int32_t) gyro_temp[2];
-              
+      gyro_bias[2]  += (int32_t) gyro_temp[2];         
   }
 }
-    packet_count = total_packets; //lazy, don't want to change next lines
-    accel_bias[0] /= (int32_t) packet_count; // Normalize sums to get average count biases
-    accel_bias[1] /= (int32_t) packet_count;
-    accel_bias[2] /= (int32_t) packet_count;
-    gyro_bias[0]  /= (int32_t) packet_count;
-    gyro_bias[1]  /= (int32_t) packet_count;
-    gyro_bias[2]  /= (int32_t) packet_count;
+    accel_bias[0] /= (int32_t) total_packets; // Normalize sums to get average count biases
+    accel_bias[1] /= (int32_t) total_packets;
+    accel_bias[2] /= (int32_t) total_packets;
+    gyro_bias[0]  /= (int32_t) total_packets;
+    gyro_bias[1]  /= (int32_t) total_packets;
+    gyro_bias[2]  /= (int32_t) total_packets;
     
   if(accel_bias[2] > 0L) {accel_bias[2] -= (int32_t) accelsensitivity;}  // Remove gravity from the z-axis accelerometer bias calculation
   else {accel_bias[2] += (int32_t) accelsensitivity;}

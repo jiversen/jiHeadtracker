@@ -17,7 +17,9 @@ close all
 delete(instrfind)
 figure
 h=jplot3([0 0 0],'.');
-title('Raw Magnetometer Data')
+hold on
+h2 = jplot3([0 0 0],'ro','markersize',8,'markerfacecolor','r');
+title('Raw Magnetometer Data (wave magnetometer around to fill sphere. CTRL-C to exit.')
 drawnow
 
 %open serial port
@@ -36,7 +38,9 @@ while(1),
     mag = sscanf(line(3:end),'%d');
     dat = [dat; mag'];
     set(h,'xdata',dat(:,1),'ydata',dat(:,2),'zdata',dat(:,3))
+    set(h2,'xdata',mag(1),'ydata',mag(2),'zdata',mag(3))
     axis auto
+    axis equal
     drawnow
   end
 end
@@ -46,6 +50,39 @@ fclose(s)
 
 %%
 [U,c] = MgnCalibration(dat)
+
+%% print in format to copy/paste into arduino
+% double calibration_matrix[3][3] = 
+% {
+%   {0.0041884,   -7.2504e-05,   0.00017412},
+%   {0,            0.0045851,    -2.885e-05},
+%   {0,            0,            0.0037432}  
+% };
+% 
+% double bias[3] = 
+% {
+%   -17.39,
+%   258.8,
+%   -307.48
+% }; 
+Ustr = num2str(U);
+cstr = num2str(c);
+
+disp('double calibration_matrix[3][3] = ')
+disp('{')
+disp(['    {' regexprep(Ustr(1,:),pat,'$1, ') '},'])
+disp(['    {' regexprep(Ustr(2,:),pat,'$1, ') '},'])
+disp(['    {' regexprep(Ustr(3,:),pat,'$1, ') '}'])
+disp('};')
+fprintf('\n')
+disp('double bias[3] = ')
+disp('{')
+disp(['   ' cstr(1,:) ','])
+disp(['   ' cstr(2,:) ','])
+disp(['   ' cstr(3,:)])
+disp('};')
+
+
 
 %%
 [ctr,rad]=fitsphere(dat);
